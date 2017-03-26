@@ -22,18 +22,42 @@ from .assessbase import *
 import json
 import random
 from runestone.server.componentdb import addQuestionToDB, addHTMLToDB
+from sphinx.addnodes import translatable
 
 
-class MChoiceNode(nodes.General, nodes.Element):
-    def __init__(self,content):
+class MChoiceNode(nodes.General, nodes.Element, translatable):
+    def __init__(self,content, source, line):
         """
 
         Arguments:
         - `self`:
         - `content`:
         """
-        super(MChoiceNode,self).__init__()
+        nodes.Element.__init__(self)
         self.mc_options = content
+        self.source = source
+        self.line = line
+        self.mc_translatables = (
+            "answer_a", "answer_b", "answer_c", "answer_d", "answer_e",
+            "feedback_a", "feedback_b", "feedback_c", "feedback_d", "feedback_e"
+            )
+
+    def preserve_original_messages(self):
+        "Store a copy of un-translated messages for further reference"
+        self.raw_mc_options = self.mc_options.copy()
+
+    def apply_translated_message(self, original_message, translated_message):
+        "Replace message with the translation from the catalog (if any)"
+        # note that this happens before extraction...
+        for key in self.mc_translatables:
+            if self.raw_mc_options.get(key) == original_message:
+                self.mc_options[key] = translated_message
+
+    def extract_original_messages(self):
+        "Return a list of translatable messages (for gettext builder)"
+        return [self.raw_mc_options[key]
+                for key in self.mc_translatables
+                if key in self.raw_mc_options]
 
 def visit_mc_node(self,node):
 
@@ -172,7 +196,7 @@ class MChoice(Assessment):
 
 
 
-        mcNode = MChoiceNode(self.options)
+        mcNode = MChoiceNode(self.options, self.srcpath, self.line)
         mcNode.template_start = TEMPLATE_START
         mcNode.template_option = OPTION
         mcNode.template_end = TEMPLATE_END
