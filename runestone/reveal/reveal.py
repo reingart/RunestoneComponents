@@ -19,6 +19,7 @@ from docutils import nodes
 from docutils.parsers.rst import directives
 from docutils.parsers.rst import Directive
 from runestone.common.runestonedirective import RunestoneDirective
+from sphinx.addnodes import translatable
 
 #add directives/javascript/css
 def setup(app):
@@ -28,11 +29,33 @@ def setup(app):
 
     app.add_node(RevealNode, html=(visit_reveal_node, depart_reveal_node))
 
-class RevealNode(nodes.General, nodes.Element):
-    def __init__(self,content):
-        super(RevealNode,self).__init__()
-        self.reveal_options = content
+class RevealNode(nodes.General, nodes.Element, translatable):
 
+    def __init__(self, content, source, line):
+        # Proper explicit super class initialization
+        # (note that General and translatable seems to be category/mixins)
+        nodes.Element.__init__(self)
+        self.reveal_options = content
+        # Populate attributes needed as reference for translators
+        self.source = source        # avoid exception in sphinx.util.canon_path
+        self.line = line            # avoid None, point to the directive lineno
+
+    def preserve_original_messages(self):
+        "Store a copy of un-translated messages for further reference"
+        self.raw_reveal_options = self.reveal_options.copy()
+
+    def apply_translated_message(self, original_message, translated_message):
+        "Replace message with the translation from the catalog (if any)"
+        # note that this happens before extraction...
+        for key in "modaltitle", "showtitle":
+            if self.raw_reveal_options.get(key) == original_message:
+                self.reveal_options[key] = translated_message
+
+    def extract_original_messages(self):
+        "Return a list of translatable messages (for gettext builder)"
+        return [self.raw_reveal_options[key]
+                for key in "modaltitle", "showtitle"
+                if key in self.raw_reveal_options]
 
 def visit_reveal_node(self, node):
 #Set options and format templates accordingly
@@ -112,7 +135,7 @@ class RevealDirective(RunestoneDirective):
 
         self.options['divid'] = self.arguments[0]
 
-        reveal_node = RevealNode(self.options)
+        reveal_node = RevealNode(self.options, self.srcpath, self.line)
 
         self.state.nested_parse(self.content, self.content_offset, reveal_node)
 
