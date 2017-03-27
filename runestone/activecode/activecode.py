@@ -25,6 +25,7 @@ from sqlalchemy import create_engine, Table, MetaData, select, delete
 from runestone.server import get_dburl
 from runestone.server.componentdb import addQuestionToDB, addHTMLToDB
 from runestone.common.runestonedirective import RunestoneDirective
+from sphinx.addnodes import translatable
 
 try:
     from html import escape  # py3
@@ -69,8 +70,8 @@ TEMPLATE_END = """
 </div>
 """
 
-class ActivcodeNode(nodes.General, nodes.Element):
-    def __init__(self, content):
+class ActivcodeNode(nodes.General, nodes.Element, translatable):
+    def __init__(self, content, source, line):
         """
 
         Arguments:
@@ -79,6 +80,29 @@ class ActivcodeNode(nodes.General, nodes.Element):
         """
         super(ActivcodeNode, self).__init__(name=content['name'])
         self.ac_components = content
+        self.source = source
+        self.line = line
+        self.ac_translatables = (
+            "caption", "tour_1", "tour_2", "tour_3", "tour_4", "tour_5",
+            "initialcode",
+            )
+
+    def preserve_original_messages(self):
+        "Store a copy of un-translated messages for further reference"
+        self.raw_ac_components = self.ac_components.copy()
+
+    def apply_translated_message(self, original_message, translated_message):
+        "Replace message with the translation from the catalog (if any)"
+        # note that this happens before extraction...
+        for key in self.ac_translatables:
+            if self.raw_ac_components.get(key) == original_message:
+                self.ac_components[key] = translated_message
+
+    def extract_original_messages(self):
+        "Return a list of translatable messages (for gettext builder)"
+        return [self.raw_ac_components[key]
+                for key in self.ac_translatables
+                if key in self.raw_ac_components]
 
 
 # self for these functions is an instance of the writer class.  For example
@@ -352,7 +376,7 @@ class ActiveCode(RunestoneDirective):
             print("This should only affect the grading interface. Everything else should be fine.")
 
 
-        acnode = ActivcodeNode(self.options)
+        acnode = ActivcodeNode(self.options, self.srcpath, self.line)
         self.add_name(acnode)    # make this divid available as a target for :ref:
 
         if explain_text:
